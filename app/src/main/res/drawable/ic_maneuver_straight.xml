@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Maneuver icon: STRAIGHT / CONTINUE / DEPART.
+
+    All maneuver icons in this app are built the same way:
+      - Single stroked path, rounded line caps + joins
+      - 64x64 viewport, ~7-unit stroke
+      - The path encodes shaft + arrowhead as one polyline so the rendering
+        is crisp at any size and matches the Mapbox Navigation SDK style.
+
+    Tinted via `tint` from the Compose layer.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64"
+    android:tint="?attr/colorPrimary">
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M32,56 L32,12 M18,26 L32,12 L46,26" />
+</vector>

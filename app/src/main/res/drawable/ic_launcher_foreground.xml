@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Perspective Road Lines -->
+    <path
+        android:strokeColor="#3300E5FF"
+        android:strokeWidth="2"
+        android:pathData="M30,85 L50,45 M78,85 L58,45" />
+
+    <!-- Horizontal perspective lines -->
+    <path
+        android:strokeColor="#2200E5FF"
+        android:strokeWidth="1"
+        android:pathData="M37,70 L71,70 M44,55 L64,55" />
+
+    <!-- Navigation Arrow -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M54,40 L68,70 L54,62 L40,70 Z" />
+
+    <!-- HUD Outer Arcs -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M30,40 A35,35 0 0,1 78,40 M30,68 A35,35 0 0,0 78,68" />
+
+</vector>
