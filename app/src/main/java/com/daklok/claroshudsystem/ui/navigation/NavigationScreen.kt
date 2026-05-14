@@ -100,6 +100,7 @@ fun NavigationScreen(
     espViewModel: EspConnectionViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val routePoints by viewModel.remainingRoutePoints.collectAsState()
     val espState by espViewModel.uiState.collectAsState()
 
     var orientation by remember { mutableStateOf(MapOrientation.HEADING_UP) }
@@ -148,9 +149,6 @@ fun NavigationScreen(
     LaunchedEffect(destinationName, destLat, destLng) {
         viewModel.startNavigation(destinationName, destLat, destLng, startLat, startLng)
     }
-
-    // ── Use trimmed route points directly from ViewModel ────────────────────
-    val routePoints = uiState.remainingRoutePoints
 
     // ── Build the BT payload string + push it whenever inputs change ────────
     val btPayload = remember(

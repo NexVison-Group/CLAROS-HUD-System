@@ -5,6 +5,9 @@ import android.app.Application
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import com.mapbox.api.directions.v5.models.BannerInstructions
 import com.mapbox.api.directions.v5.models.RouteOptions
 import com.mapbox.api.directions.v5.models.StepManeuver
@@ -50,7 +53,6 @@ data class NavigationUiState(
     val routeReady: Boolean = false,
     val routes: List<NavigationRoute> = emptyList(),
     // The points of the route that are still ahead of the user
-    val remainingRoutePoints: List<Point> = emptyList(),
     val error: String? = null
 )
 
@@ -59,12 +61,23 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
     private val _uiState = MutableStateFlow(NavigationUiState())
     val uiState: StateFlow<NavigationUiState> = _uiState.asStateFlow()
 
+    private val _remainingRoutePoints = MutableStateFlow<List<Point>>(emptyList())
+    val remainingRoutePoints: StateFlow<List<Point>> = _remainingRoutePoints.asStateFlow()
+
     private val _matchedLocation = MutableStateFlow<LocationMatcherResult?>(null)
     val matchedLocation: StateFlow<LocationMatcherResult?> = _matchedLocation.asStateFlow()
 
     private var decodedSteps: List<List<Point>> = emptyList()
     private var lastRouteProgress: RouteProgress? = null
     private var lastRouteId: String? = null
+
+    // For smooth interpolation
+    private var lastUpdateTimestamp = 0L
+    private var previousPuckLocation: Point? = null
+    private var lastPuckLocation: Point? = null
+    private var currentSpeedMps = 0.0
+    private var currentBearing = 0.0
+    private var interpolationJob: kotlinx.coroutines.Job? = null
 
     private fun cacheRouteGeometry(navRoute: NavigationRoute) {
         val leg = navRoute.directionsRoute.legs()?.firstOrNull()
@@ -84,13 +97,76 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
             val mps: Double = locationMatcherResult.enhancedLocation.speed ?: 0.0
             val kmh = (mps * 3.6).toInt().coerceAtLeast(0)
 
-            // Recalculate remaining points on every location update to keep line in sync with puck
-            val points = lastRouteProgress?.let { getRemainingPoints(it) }
+            // Update interpolation variables
+            currentSpeedMps = mps
+            currentBearing = locationMatcherResult.enhancedLocation.bearing ?: currentBearing
+
+            // Store previous for interpolation
+            previousPuckLocation = lastPuckLocation
+            lastPuckLocation = Point.fromLngLat(
+                locationMatcherResult.enhancedLocation.longitude,
+                locationMatcherResult.enhancedLocation.latitude
+            )
+
+            // If this is the first point, initialize previous to current
+            if (previousPuckLocation == null) {
+                previousPuckLocation = lastPuckLocation
+            }
+
+            lastUpdateTimestamp = System.currentTimeMillis()
+
+            // Immediate update on new GPS result
+            updateRoutePoints()
 
             _uiState.value = _uiState.value.copy(
-                speedKmh = kmh,
-                remainingRoutePoints = points ?: _uiState.value.remainingRoutePoints
+                speedKmh = kmh
             )
+        }
+    }
+
+    private fun updateRoutePoints() {
+        val puck = lastPuckLocation ?: return
+        val progress = lastRouteProgress ?: return
+        _remainingRoutePoints.value = getRemainingPoints(puck, progress)
+    }
+
+    private fun startInterpolation() {
+        interpolationJob?.cancel()
+        interpolationJob = viewModelScope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(16) // ~60fps
+
+                if (currentSpeedMps > 0.5 && previousPuckLocation != null && lastPuckLocation != null) {
+                    val now = System.currentTimeMillis()
+                    // Mapbox LocationPuck usually animates over the interval between updates (1000ms for 1Hz)
+                    // We interpolate from previous to current to match that visual smoothing.
+                    val progress = (now - lastUpdateTimestamp).toDouble() / 1000.0
+
+                    if (progress in 0.0..1.0) {
+                        val totalDist = TurfMeasurement.distance(previousPuckLocation!!, lastPuckLocation!!, "meters")
+                        val bearing = TurfMeasurement.bearing(previousPuckLocation!!, lastPuckLocation!!)
+                        val progressDist = totalDist * progress
+
+                        val interpolatedPoint = TurfMeasurement.destination(
+                            previousPuckLocation!!,
+                            progressDist,
+                            bearing,
+                            "meters"
+                        )
+                        _remainingRoutePoints.value = getRemainingPoints(interpolatedPoint, lastRouteProgress!!)
+                    } else if (progress > 1.0 && progress <= 2.0) {
+                        // If update is late, continue slightly in current direction
+                        val overshotDist = currentSpeedMps * (progress - 1.0)
+                        val interpolatedPoint = TurfMeasurement.destination(
+                            lastPuckLocation!!,
+                            overshotDist,
+                            currentBearing,
+                            "meters"
+                        )
+                        _remainingRoutePoints.value = getRemainingPoints(interpolatedPoint, lastRouteProgress!!)
+                    }
+                }
+            }
         }
     }
 
@@ -128,7 +204,7 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
 
             // ── Compute remaining route points for the UI ──────────────
             val distRemaining = routeProgress.distanceRemaining.toDouble()
-            val remainingPoints = getRemainingPoints(routeProgress)
+            updateRoutePoints()
 
             _uiState.value = _uiState.value.copy(
                 distanceRemaining = "%.1f km".format(distRemaining / 1000.0),
@@ -139,13 +215,12 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
                 nextManeuverDistanceMeters = stepDistanceM,
                 maneuverType = maneuverType,
                 roundaboutExit = exit,
-                remainingRoutePoints = remainingPoints,
                 routes = listOf(routeProgress.navigationRoute)
             )
         }
     }
 
-    private fun getRemainingPoints(routeProgress: RouteProgress): List<Point> {
+    private fun getRemainingPoints(currentPoint: Point, routeProgress: RouteProgress): List<Point> {
         val legProgress = routeProgress.currentLegProgress ?: return emptyList()
         val allSteps = legProgress.routeLeg?.steps() ?: return emptyList()
         val currentStepProgress = legProgress.currentStepProgress ?: return emptyList()
@@ -154,30 +229,44 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
         val currentStepIdx = allSteps.indexOf(currentStep).coerceAtLeast(0)
 
         if (decodedSteps.isEmpty() || currentStepIdx >= decodedSteps.size) {
-            return _uiState.value.remainingRoutePoints
+            return _remainingRoutePoints.value
         }
 
         val points = mutableListOf<Point>()
 
         // 1. Prepend current location (puck) for a gapless connection
-        _matchedLocation.value?.enhancedLocation?.let {
-            points.add(Point.fromLngLat(it.longitude, it.latitude))
-        }
+        points.add(currentPoint)
 
         // 2. Add remaining part of current step
         val stepPoints = decodedSteps[currentStepIdx]
-        val traveled = currentStepProgress.distanceTraveled.toDouble()
-        var accumulated = 0.0
-        var dropIndex = 0
-        for (j in 0 until stepPoints.size - 1) {
-            val d = TurfMeasurement.distance(stepPoints[j], stepPoints[j + 1], "meters")
-            if (accumulated + d > traveled) {
-                dropIndex = j + 1
-                break
+
+        // Find the segment (i, i+1) closest to current location
+        var bestSegmentIndex = 0
+        var minDistanceToSegment = Double.MAX_VALUE
+
+        for (i in 0 until stepPoints.size - 1) {
+            val p1 = stepPoints[i]
+            val p2 = stepPoints[i + 1]
+
+            // Calculate distance from point to segment using a simple distance-to-segment approximation
+            // Since we're in a local area, we can use a simplified approach or just the average distance to endpoints
+            // if Turf doesn't have a direct segment distance tool.
+            // However, a better proxy is the distance to the midpoint or the minimum distance to either vertex.
+            val d1 = TurfMeasurement.distance(currentPoint, p1, "meters")
+            val d2 = TurfMeasurement.distance(currentPoint, p2, "meters")
+            val d = (d1 + d2) / 2.0 // Simple heuristic: average distance to vertices
+
+            if (d < minDistanceToSegment) {
+                minDistanceToSegment = d
+                bestSegmentIndex = i
             }
-            accumulated += d
         }
-        points.addAll(stepPoints.drop(dropIndex))
+
+        // We include all points from the NEXT vertex of the current segment onwards.
+        // This ensures the line starts at the puck and continues forward along the route.
+        if (bestSegmentIndex + 1 < stepPoints.size) {
+            points.addAll(stepPoints.subList(bestSegmentIndex + 1, stepPoints.size))
+        }
 
         // 3. Add all subsequent steps
         for (i in (currentStepIdx + 1) until decodedSteps.size) {
@@ -189,6 +278,7 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
 
     init {
         startSessionIfPermitted()
+        startInterpolation()
     }
 
     fun startSessionIfPermitted() {
@@ -301,11 +391,12 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
                         step.geometry()?.let { com.mapbox.geojson.utils.PolylineUtils.decode(it, 6) } ?: emptyList()
                     } ?: emptyList()
 
+                    _remainingRoutePoints.value = initialPoints
+
                     _uiState.value = _uiState.value.copy(
                         routeReady = true,
                         isNavigating = true,
                         routes = routes,
-                        remainingRoutePoints = initialPoints,
                         distanceRemaining = "%.1f km".format(totalMeters / 1000.0),
                         durationRemaining = "${(totalSeconds / 60.0).toInt()} min",
                         eta = etaFormatted,
