@@ -931,7 +931,9 @@ private fun MapPanel(
                         annotationConfig = AnnotationConfig(
                             slotName = "middle"
                         )
-                    )
+                    ) {
+                        lineEmissiveStrength = 1.0
+                    }
                 }
 
                 MapEffect(currentPuckModel) { mapView ->
