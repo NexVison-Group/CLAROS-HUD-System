@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.daklok.claroshudsystem.ble.BleDeviceItem
 import com.daklok.claroshudsystem.ble.EspConnectionStatus
 import com.daklok.claroshudsystem.ble.EspConnectionUiState
 import com.daklok.claroshudsystem.ble.EspConnectionViewModel
@@ -731,6 +732,115 @@ private fun EspPill(status: EspConnectionStatus, expanded: Boolean, onClick: () 
 // ─────────────────────────────────────────────────────────────────────────────
 // ESP32 expanded panel
 // ─────────────────────────────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BleDevicePicker(
+    devices: List<BleDeviceItem>,
+    isScanning: Boolean,
+    onSelect: (address: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "SELECT BLE DEVICE",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    letterSpacing = 2.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isScanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                }
+            }
+
+            if (devices.isEmpty()) {
+                Text(
+                    if (isScanning) "Scanning for nearby BLE devices…"
+                    else "No devices found. Make sure your ESP32-HUD is powered on and advertising.",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(devices) { device ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(device.address) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (device.name == "ESP32-HUD")
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Bluetooth,
+                                    contentDescription = null,
+                                    tint = if (device.name == "ESP32-HUD")
+                                        MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        device.name,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        device.address,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 private fun EspPanel(
@@ -738,6 +848,16 @@ private fun EspPanel(
     espViewModel: EspConnectionViewModel,
     blePerms: MultiplePermissionsState
 ) {
+    // Show BLE device picker sheet when scanning
+    if (espState.showDevicePicker) {
+        BleDevicePicker(
+            devices    = espState.scannedDevices,
+            isScanning = espState.status == EspConnectionStatus.SCANNING,
+            onSelect   = { address -> espViewModel.connectToDevice(address) },
+            onDismiss  = { espViewModel.cancelScan() }
+        )
+    }
+
     val isLinked = espState.status == EspConnectionStatus.CONNECTED ||
             espState.status == EspConnectionStatus.CONNECTING ||
             espState.status == EspConnectionStatus.SCANNING
@@ -815,8 +935,8 @@ private fun EspPanel(
 
             if (espState.status == EspConnectionStatus.DISCONNECTED && espState.lastPayloadSent.isBlank()) {
                 Text(
-                    "Power on your ESP32-HUD device, then tap CONNECT. " +
-                            "Scans for \"HUD-ESP32\" over BLE.",
+                    "Power on your ESP32-HUD, then tap CONNECT. " +
+                            "The app will scan for nearby BLE devices and let you pick one.",
                     fontFamily = FontFamily.Monospace, fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )

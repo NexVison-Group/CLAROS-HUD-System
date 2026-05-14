@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.daklok.claroshudsystem.R
 import com.daklok.claroshudsystem.ble.BluetoothPayload
+import com.daklok.claroshudsystem.ble.BleDeviceItem
 import com.daklok.claroshudsystem.ble.EspConnectionStatus
 import com.daklok.claroshudsystem.ble.EspConnectionViewModel
 import com.mapbox.geojson.Point
@@ -59,6 +60,7 @@ import com.mapbox.maps.plugin.locationcomponent.LocationComponentConstants
 import com.mapbox.maps.extension.compose.style.standard.LightPresetValue
 import com.mapbox.maps.extension.compose.style.standard.MapboxStandardStyle
 import com.mapbox.maps.plugin.LocationPuck2D
+import com.mapbox.maps.plugin.LocationPuck3D
 import com.mapbox.maps.plugin.PuckBearing
 import com.mapbox.maps.plugin.Plugin
 import com.mapbox.maps.plugin.compass.CompassPlugin
@@ -67,6 +69,9 @@ import com.mapbox.maps.plugin.locationcomponent.LocationComponentPlugin
 import com.mapbox.maps.plugin.scalebar.ScaleBarPlugin
 import com.mapbox.maps.plugin.viewport.data.FollowPuckViewportStateBearing
 import com.mapbox.maps.plugin.viewport.data.FollowPuckViewportStateOptions
+import com.mapbox.maps.extension.compose.style.BooleanValue
+import com.mapbox.maps.extension.compose.style.standard.rememberStandardStyleState
+import com.mapbox.maps.MapboxExperimental
 import com.mapbox.search.QueryType
 import com.mapbox.search.ResponseInfo
 import com.mapbox.search.ReverseGeoOptions
@@ -75,12 +80,14 @@ import com.mapbox.search.SearchEngine
 import com.mapbox.search.SearchEngineSettings
 import com.mapbox.search.ApiType
 import com.mapbox.search.result.SearchResult
+import com.daklok.claroshudsystem.prefs.PuckModel
 import com.daklok.claroshudsystem.prefs.ThemeMode
 import com.daklok.claroshudsystem.prefs.ThemePreferences
 
 // ── Orientation mode ──────────────────────────────────────────────────────────
 enum class MapOrientation { NORTH_UP, HEADING_UP }
 
+@OptIn(MapboxExperimental::class, ExperimentalMaterial3Api::class)
 @Composable
 fun NavigationScreen(
     destinationName: String,
@@ -170,6 +177,16 @@ fun NavigationScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        // BLE device picker sheet — shown when scanning
+        if (espState.showDevicePicker) {
+            BleDevicePicker(
+                devices    = espState.scannedDevices,
+                isScanning = espState.status == EspConnectionStatus.SCANNING,
+                onSelect   = { address -> espViewModel.connectToDevice(address) },
+                onDismiss  = { espViewModel.cancelScan() }
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -313,6 +330,118 @@ private fun formatTapLabel(r: SearchResult): String {
         name != null -> name
         addr != null -> addr
         else -> "Unknown location"
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BLE device picker bottom sheet
+// ─────────────────────────────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BleDevicePicker(
+    devices: List<BleDeviceItem>,
+    isScanning: Boolean,
+    onSelect: (address: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "SELECT BLE DEVICE",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    letterSpacing = 2.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isScanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                }
+            }
+
+            if (devices.isEmpty()) {
+                Text(
+                    if (isScanning) "Scanning for nearby BLE devices…"
+                    else "No devices found. Make sure your ESP32-HUD is powered on and advertising.",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(devices) { device ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(device.address) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (device.name == "ESP32-HUD")
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Bluetooth,
+                                    contentDescription = null,
+                                    tint = if (device.name == "ESP32-HUD")
+                                        MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        device.name,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        device.address,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -762,38 +891,53 @@ private fun MapPanel(
                 modifier = Modifier.fillMaxSize(),
                 mapViewportState = mapViewportState,
                 style = {
-                    MapboxStandardStyle {
-                        this.lightPreset = lightPreset
-                    }
+                    MapboxStandardStyle(
+                        standardStyleState = rememberStandardStyleState {
+                            configurationsState.lightPreset = lightPreset
+                            configurationsState.show3dObjects = BooleanValue(true)
+                        }
+                    )
                 },
                 compass = {},
                 scaleBar = {},
                 onMapLongClickListener = { false }
             ) {
+                val currentPuckModel by ThemePreferences.puckModel.collectAsState()
+
+
+
                 if (routePoints.size >= 2) {
+                    // Apple Maps style route: vivid blue inner line with contrasting border.
+                    // Use lightPreset (already passed as parameter) to decide colours.
+                    // Dark/Night map → bright sky-blue inner + white border to pop off dark tiles.
+                    // Light/Dawn map → strong royal-blue inner + dark-blue border to stay visible.
+                    val isDark = lightPreset == LightPresetValue.NIGHT
+                    val innerColor = if (isDark) "#4FC3F7" else "#1A8FFF"
+                    val outerColor = if (isDark) "#FFFFFF" else "#0057CC"
+
                     PolylineAnnotationGroup(
                         annotations = listOf(
                             PolylineAnnotationOptions()
                                 .withPoints(routePoints)
-                                .withLineColor("#FFFFFF")
-                                .withLineWidth(14.0)
-                                .withLineOpacity(0.9),
+                                .withLineColor(outerColor)
+                                .withLineWidth(13.0)
+                                .withLineOpacity(1.0),
                             PolylineAnnotationOptions()
                                 .withPoints(routePoints)
-                                .withLineColor("#00E5FF")
-                                .withLineWidth(9.0)
-                                .withLineOpacity(0.98)
+                                .withLineColor(innerColor)
+                                .withLineWidth(8.5)
+                                .withLineOpacity(1.0)
                         ),
                         annotationConfig = AnnotationConfig(
-                            belowLayerId = LocationComponentConstants.LOCATION_INDICATOR_LAYER
+                            slotName = "middle"
                         )
                     )
                 }
 
-                MapEffect(Unit) { mapView ->
+                MapEffect(currentPuckModel) { mapView ->
                     val navigationLocationProvider =
                         com.mapbox.navigation.ui.maps.location.NavigationLocationProvider()
-                    
+
                     mapView.getPlugin<LocationComponentPlugin>(Plugin.MAPBOX_LOCATION_COMPONENT_PLUGIN_ID)?.let { location ->
                         location.setLocationProvider(navigationLocationProvider)
 
@@ -809,10 +953,23 @@ private fun MapPanel(
                         location.updateSettings {
                             puckBearing = PuckBearing.COURSE
                             puckBearingEnabled = true
-                            locationPuck = LocationPuck2D(
-                                topImage = ImageHolder.from(com.daklok.claroshudsystem.R.drawable.ic_nav_cursor),
-                                scaleExpression = "[\"literal\", 2.0]"
-                            )
+                            locationPuck = when (currentPuckModel) {
+                                PuckModel.SPORTS_CAR -> LocationPuck3D(
+                                    modelUri = "asset://car_sports.glb",
+                                    modelScale = listOf(15.0f, 15.0f, 15.0f),
+                                    modelRotation = listOf(0.0f, 0.0f, 180.0f)
+                                )
+                                PuckModel.REGULAR_CAR -> LocationPuck3D(
+                                    modelUri = "asset://car_regular.glb",
+                                    modelScale = listOf(15.0f, 15.0f, 15.0f),
+                                    modelRotation = listOf(0.0f, 0.0f, 0.0f)
+                                )
+                                PuckModel.ARROW -> LocationPuck2D(
+                                    topImage = ImageHolder.from(com.daklok.claroshudsystem.R.drawable.ic_nav_cursor),
+                                    scaleExpression = "[\"literal\", 2.0]"
+                                )
+                            }
+                            slot = "top"
                             enabled = true
                         }
                     }
@@ -839,14 +996,9 @@ private fun MapPanel(
                         }
                     }
 
-                    // Force the annotation layer to stay below the location puck.
-                    // The polyline annotation layer ID is typically "com.mapbox.annotations.lines".
-                    mapView.mapboxMap.getStyle { style ->
-                        style.moveStyleLayer(
-                            "com.mapbox.annotations.lines",
-                            com.mapbox.maps.LayerPosition(null, LocationComponentConstants.LOCATION_INDICATOR_LAYER, null)
-                        )
-                    }
+                    // The route line is placed in the "middle" slot via AnnotationConfig,
+                    // and the puck is in the "top" slot, so the line stays below the puck.
+
                 }
             }
 

@@ -62,7 +62,19 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
     private val _matchedLocation = MutableStateFlow<LocationMatcherResult?>(null)
     val matchedLocation: StateFlow<LocationMatcherResult?> = _matchedLocation.asStateFlow()
 
-    private val mapboxNavigation: MapboxNavigation?
+    private var decodedSteps: List<List<Point>> = emptyList()
+    private var lastRouteProgress: RouteProgress? = null
+    private var lastRouteId: String? = null
+
+    private fun cacheRouteGeometry(navRoute: NavigationRoute) {
+        val leg = navRoute.directionsRoute.legs()?.firstOrNull()
+        decodedSteps = leg?.steps()?.map { step ->
+            step.geometry()?.let { com.mapbox.geojson.utils.PolylineUtils.decode(it, 6) } ?: emptyList()
+        } ?: emptyList()
+        lastRouteId = navRoute.id
+    }
+
+    val mapboxNavigation: MapboxNavigation?
         get() = MapboxNavigationApp.current()
 
     private val locationObserver = object : LocationObserver {
@@ -71,12 +83,25 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
             _matchedLocation.value = locationMatcherResult
             val mps: Double = locationMatcherResult.enhancedLocation.speed ?: 0.0
             val kmh = (mps * 3.6).toInt().coerceAtLeast(0)
-            _uiState.value = _uiState.value.copy(speedKmh = kmh)
+
+            // Recalculate remaining points on every location update to keep line in sync with puck
+            val points = lastRouteProgress?.let { getRemainingPoints(it) }
+
+            _uiState.value = _uiState.value.copy(
+                speedKmh = kmh,
+                remainingRoutePoints = points ?: _uiState.value.remainingRoutePoints
+            )
         }
     }
 
     private val routeProgressObserver = object : RouteProgressObserver {
         override fun onRouteProgressChanged(routeProgress: RouteProgress) {
+            // Detect reroute: if routeId changed, refresh our cached geometry
+            if (routeProgress.navigationRoute.id != lastRouteId) {
+                cacheRouteGeometry(routeProgress.navigationRoute)
+            }
+
+            lastRouteProgress = routeProgress
             val etaMs = System.currentTimeMillis() + (routeProgress.durationRemaining * 1000).toLong()
             val etaFormatted = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                 .format(java.util.Date(etaMs))
@@ -125,32 +150,40 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
         val allSteps = legProgress.routeLeg?.steps() ?: return emptyList()
         val currentStepProgress = legProgress.currentStepProgress ?: return emptyList()
         val currentStep = currentStepProgress.step ?: return emptyList()
-        
+
         val currentStepIdx = allSteps.indexOf(currentStep).coerceAtLeast(0)
-        
-        val points = mutableListOf<Point>()
-        
-        for (i in currentStepIdx until allSteps.size) {
-            val step = allSteps[i]
-            val geometry = step.geometry() ?: continue
-            val stepPoints = com.mapbox.geojson.utils.PolylineUtils.decode(geometry, 6)
-            
-            if (i == currentStepIdx) {
-                // Drop points from the current step based on distanceTraveled in METERS
-                val traveled = currentStepProgress.distanceTraveled.toDouble()
-                var accumulated = 0.0
-                var dropIndex = 0
-                for (j in 0 until stepPoints.size - 1) {
-                    val d = TurfMeasurement.distance(stepPoints[j], stepPoints[j+1], "meters")
-                    if (accumulated + d > traveled) break
-                    accumulated += d
-                    dropIndex = j + 1
-                }
-                points.addAll(stepPoints.drop(dropIndex))
-            } else {
-                points.addAll(stepPoints)
-            }
+
+        if (decodedSteps.isEmpty() || currentStepIdx >= decodedSteps.size) {
+            return _uiState.value.remainingRoutePoints
         }
+
+        val points = mutableListOf<Point>()
+
+        // 1. Prepend current location (puck) for a gapless connection
+        _matchedLocation.value?.enhancedLocation?.let {
+            points.add(Point.fromLngLat(it.longitude, it.latitude))
+        }
+
+        // 2. Add remaining part of current step
+        val stepPoints = decodedSteps[currentStepIdx]
+        val traveled = currentStepProgress.distanceTraveled.toDouble()
+        var accumulated = 0.0
+        var dropIndex = 0
+        for (j in 0 until stepPoints.size - 1) {
+            val d = TurfMeasurement.distance(stepPoints[j], stepPoints[j + 1], "meters")
+            if (accumulated + d > traveled) {
+                dropIndex = j + 1
+                break
+            }
+            accumulated += d
+        }
+        points.addAll(stepPoints.drop(dropIndex))
+
+        // 3. Add all subsequent steps
+        for (i in (currentStepIdx + 1) until decodedSteps.size) {
+            points.addAll(decodedSteps[i])
+        }
+
         return points
     }
 
@@ -238,8 +271,13 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
             object : NavigationRouterCallback {
                 override fun onRoutesReady(routes: List<NavigationRoute>, routerOrigin: String) {
                     if (routes.isEmpty()) return
+                    val primaryRoute = routes.first()
                     nav.setNavigationRoutes(routes)
-                    val leg = routes.first().directionsRoute.legs()?.firstOrNull()
+
+                    // Cache decoded geometries for performance
+                    cacheRouteGeometry(primaryRoute)
+
+                    val leg = primaryRoute.directionsRoute.legs()?.firstOrNull()
                     val totalSeconds = leg?.duration() ?: 0.0
                     val totalMeters = leg?.distance() ?: 0.0
                     val etaMs = System.currentTimeMillis() + (totalSeconds * 1000).toLong()

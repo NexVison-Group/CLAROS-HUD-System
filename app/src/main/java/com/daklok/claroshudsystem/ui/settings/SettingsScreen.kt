@@ -23,14 +23,17 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.daklok.claroshudsystem.prefs.PuckModel
 import com.daklok.claroshudsystem.prefs.ThemeMode
 import com.daklok.claroshudsystem.prefs.ThemePreferences
+import androidx.compose.material.icons.rounded.Navigation
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val currentMode by ThemePreferences.mode.collectAsState()
+    val currentPuck by ThemePreferences.puckModel.collectAsState()
 
     Scaffold(
         topBar = {
@@ -65,6 +68,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            ThemePreferences.initialize(context) // Ensure initialized
+
             SectionHeader("APPEARANCE", icon = Icons.Rounded.Brightness6)
 
             Surface(
@@ -116,6 +121,52 @@ fun SettingsScreen(onBack: () -> Unit) {
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
+
+            Spacer(Modifier.height(8.dp))
+
+            SectionHeader("NAVIGATION", icon = Icons.Rounded.Navigation)
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    OptionRow(
+                        label = "3D Arrow",
+                        sub = "High-definition navigation pointer",
+                        icon = Icons.Rounded.Navigation,
+                        selected = currentPuck == PuckModel.ARROW,
+                        onClick = { ThemePreferences.setPuckModel(context, PuckModel.ARROW) }
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+                    )
+                    OptionRow(
+                        label = "Sports Car",
+                        sub = "HD blue sports car model",
+                        icon = Icons.Rounded.PhoneAndroid,
+                        selected = currentPuck == PuckModel.SPORTS_CAR,
+                        onClick = { ThemePreferences.setPuckModel(context, PuckModel.SPORTS_CAR) }
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+                    )
+                    OptionRow(
+                        label = "Regular Car",
+                        sub = "HD gray car model",
+                        icon = Icons.Rounded.PhoneAndroid,
+                        selected = currentPuck == PuckModel.REGULAR_CAR,
+                        onClick = { ThemePreferences.setPuckModel(context, PuckModel.REGULAR_CAR) }
+                    )
+                }
+            }
         }
     }
 }
@@ -142,7 +193,7 @@ private fun SectionHeader(text: String, icon: ImageVector) {
 }
 
 @Composable
-private fun ThemeOptionRow(
+private fun OptionRow(
     label: String,
     sub: String,
     icon: ImageVector,
@@ -202,4 +253,15 @@ private fun ThemeOptionRow(
             )
         )
     }
+}
+
+@Composable
+private fun ThemeOptionRow(
+    label: String,
+    sub: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    OptionRow(label, sub, icon, selected, onClick)
 }
