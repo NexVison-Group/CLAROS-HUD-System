@@ -10,7 +10,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.mapbox.api.directions.v5.models.BannerInstructions
 import com.mapbox.api.directions.v5.models.RouteOptions
-import com.mapbox.api.directions.v5.models.StepManeuver
 import com.mapbox.common.location.Location
 import com.mapbox.geojson.Point
 import com.mapbox.navigation.base.extensions.applyDefaultNavigationOptions
@@ -192,14 +191,32 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
             val banner = routeProgress.bannerInstructions
             val (maneuverText, maneuverType) = parseBannerInstruction(banner)
 
-            // ── Roundabout exit number, if the current step is a roundabout
-            val maneuver: StepManeuver? = routeProgress
-                .currentLegProgress
-                ?.currentStepProgress
-                ?.step
-                ?.maneuver()
+            // ── Roundabout exit number ────────────────────────────────────
+            // The banner can already be announcing the roundabout while the
+            // active step is still the approach step (whose maneuver carries
+            // no exit), and conversely the banner can switch to the next
+            // post-roundabout instruction while we're still inside the
+            // circle. Reading exit() off currentStepProgress.step is therefore
+            // unreliable and produces the wrong number on screen.
+            //
+            // Instead, when the banner-derived maneuver type is ROUNDABOUT,
+            // locate the nearest upcoming step in the leg whose own maneuver
+            // type is a roundabout/rotary and read exit() from THAT step.
+            // That value is set at route-build time and reflects the actual
+            // exit the driver should take.
+            val legProgress = routeProgress.currentLegProgress
             val exit: Int? = if (maneuverType == ManeuverType.ROUNDABOUT) {
-                maneuver?.exit()?.takeIf { it > 0 }
+                val steps = legProgress?.routeLeg?.steps().orEmpty()
+                val currentStepIdx = legProgress?.currentStepProgress?.stepIndex ?: 0
+                steps.asSequence()
+                    .drop(currentStepIdx)
+                    .firstOrNull { step ->
+                        val t = step.maneuver()?.type()?.lowercase().orEmpty()
+                        t.contains("roundabout") || t.contains("rotary")
+                    }
+                    ?.maneuver()
+                    ?.exit()
+                    ?.takeIf { it > 0 }
             } else null
 
             // ── Compute remaining route points for the UI ──────────────
@@ -276,6 +293,23 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
         return points
     }
 
+    // The default Mapbox reroute controller is fast and reliable for
+    // *detecting* off-route and firing a reroute, but its built-in
+    // RouteOptions updater pins the request to the driver's current heading
+    // with a narrow tolerance — which after a wrong turn corresponds to the
+    // *wrong* direction. The router then dutifully produces "continuations"
+    // of that wrong direction: U-turns, opposing-direction one-way streets,
+    // etc.
+    //
+    // The fix is a RerouteOptionsAdapter that strips the bearingsList from
+    // the route options on every reroute, so the router is free to find the
+    // best legal path from the user's current GPS fix to the destination.
+    private val rerouteOptionsAdapter =
+        object : com.mapbox.navigation.core.reroute.RerouteOptionsAdapter {
+            override fun onRouteOptions(routeOptions: RouteOptions): RouteOptions =
+                routeOptions.toBuilder().bearingsList(null).build()
+        }
+
     init {
         startSessionIfPermitted()
         startInterpolation()
@@ -289,6 +323,12 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
         try {
             mapboxNavigation?.registerLocationObserver(locationObserver)
             mapboxNavigation?.registerRouteProgressObserver(routeProgressObserver)
+            // Keep the default reroute controller — it's the only thing that
+            // detects off-route quickly and triggers a fresh route. We just
+            // intercept the RouteOptions it builds so bearings (i.e. the
+            // wrong-direction constraint) get stripped before the request
+            // goes out.
+            mapboxNavigation?.setRerouteOptionsAdapter(rerouteOptionsAdapter)
             mapboxNavigation?.startTripSession()
         } catch (e: SecurityException) {
             _uiState.value = _uiState.value.copy(error = "Location permission denied.")
@@ -320,6 +360,8 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
+        val dest = Point.fromLngLat(destLng, destLat)
+
         val origin: Point? = if (startLat != null && startLng != null) {
             Point.fromLngLat(startLng, startLat)
         } else {
@@ -338,17 +380,31 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
                         result.enhancedLocation.longitude,
                         result.enhancedLocation.latitude
                     )
-                    requestRoute(nav, name, pt, Point.fromLngLat(destLng, destLat))
+                    requestRoute(nav, name, pt, dest)
                 }
             }
             nav.registerLocationObserver(retryObserver)
             return
         }
 
-        requestRoute(nav, name, origin, Point.fromLngLat(destLng, destLat))
+        requestRoute(nav, name, origin, dest)
     }
 
-    private fun requestRoute(nav: MapboxNavigation, name: String, origin: Point, destination: Point) {
+    private fun requestRoute(
+        nav: MapboxNavigation,
+        name: String,
+        origin: Point,
+        destination: Point
+    ) {
+        // No bearingsList. Pinning the request to the vehicle's heading is
+        // actively harmful on reroute: after a wrong turn the live heading
+        // points the wrong way, and the router will dutifully produce routes
+        // that "continue in that direction" — i.e. illegal U-turns or
+        // driving the wrong way down one-way streets just to satisfy the
+        // bearing constraint. Without bearings the router picks the best
+        // legal route from the origin point. The RerouteOptionsAdapter
+        // installed in startSessionIfPermitted enforces the same policy for
+        // automatic reroutes triggered by the default reroute controller.
         val routeOptions = RouteOptions.builder()
             .applyDefaultNavigationOptions()
             .coordinatesList(listOf(origin, destination))
@@ -383,9 +439,12 @@ class NavigationViewModel(application: Application) : AndroidViewModel(applicati
                         firstStepDist > 0     -> "${firstStepDist.toInt()} m"
                         else                  -> ""
                     }
-                    val firstExit = if (firstType == ManeuverType.ROUNDABOUT)
-                        firstStep?.maneuver()?.exit()?.takeIf { it > 0 }
-                    else null
+                    val firstExit = if (firstType == ManeuverType.ROUNDABOUT) {
+                        leg?.steps()?.firstOrNull { step ->
+                            val t = step.maneuver()?.type()?.lowercase().orEmpty()
+                            t.contains("roundabout") || t.contains("rotary")
+                        }?.maneuver()?.exit()?.takeIf { it > 0 }
+                    } else null
 
                     val initialPoints = leg?.steps()?.flatMap { step ->
                         step.geometry()?.let { com.mapbox.geojson.utils.PolylineUtils.decode(it, 6) } ?: emptyList()
