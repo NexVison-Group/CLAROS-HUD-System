@@ -11,7 +11,7 @@ import com.daklok.claroshudsystem.ui.navigation.ManeuverType
  * Examples:
  *     RIGHT, 11m, 20:00, 15
  *     FORWARD, 320m, 14:32, 47
- *     2, 80m, 09:15, 35          (roundabout — DIR carries the exit number)
+ *     ROUNDABOUT_2, 80m, 09:15, 35  (roundabout — DIR carries the exit number)
  *
  * The ESP32 firmware can split on ',' and trim whitespace to obtain the four
  * positional fields in order: direction, distance, ETA, speed.
@@ -23,7 +23,7 @@ import com.daklok.claroshudsystem.ui.navigation.ManeuverType
  *     SLIGHT_LEFT / SLIGHT_RIGHT
  *     UTURN              — make a U-turn
  *     ARRIVE             — arrival at destination
- *     <integer>          — roundabout: the exit number (e.g. "2")
+ *     ROUNDABOUT_<int>   — roundabout: the exit number (e.g. "ROUNDABOUT_2")
  */
 object BluetoothPayload {
 
@@ -66,7 +66,7 @@ object BluetoothPayload {
         ManeuverType.TURN_SLIGHT_RIGHT->"SLIGHT_RIGHT"
         ManeuverType.U_TURN          -> "UTURN"
         ManeuverType.ARRIVE          -> "ARRIVE"
-        ManeuverType.ROUNDABOUT      -> (roundaboutExit?.takeIf { it > 0 } ?: 1).toString()
+        ManeuverType.ROUNDABOUT      -> "ROUNDABOUT_${roundaboutExit?.takeIf { it > 0 } ?: 1}"
         ManeuverType.UNKNOWN         -> "FORWARD"
     }
 

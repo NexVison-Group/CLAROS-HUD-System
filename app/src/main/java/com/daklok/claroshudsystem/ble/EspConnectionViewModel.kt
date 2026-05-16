@@ -9,10 +9,12 @@ import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -40,7 +42,7 @@ private val NUS_SERVICE_UUID: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E5
 private val NUS_TX_CHAR_UUID: UUID  = UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E")
 
 /** How long to scan before giving up (ms). */
-private const val SCAN_TIMEOUT_MS = 10_000L
+private const val SCAN_TIMEOUT_MS = 15_000L
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -84,6 +86,14 @@ data class EspConnectionUiState(
  *
  * BLE devices do NOT appear in the system Bluetooth settings unless paired,
  * so we must scan and present results inside the app.
+ *
+ * FIX: scan using TWO parallel callbacks:
+ *   a) Filtered scan by NUS service UUID — catches devices that advertise
+ *      the service UUID but may NOT include a local name in the ad packet.
+ *   b) Unfiltered scan — catches everything else (name in scan response).
+ * Both feeds are merged into the same device list.
+ * Devices with no name fall back to showing their MAC address so the user
+ * can still identify and pick them.
  */
 @SuppressLint("MissingPermission") // permissions are checked at call-site
 class EspConnectionViewModel(application: Application) : AndroidViewModel(application) {
@@ -123,7 +133,13 @@ class EspConnectionViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * Start a BLE scan and show a device-picker sheet in the UI.
-     * Called when the user taps CONNECT while disconnected.
+     *
+     * We run TWO scans simultaneously:
+     *  1. Filtered by NUS service UUID — catches ESP32 devices that advertise
+     *     the service UUID in their ad packet (even without a name).
+     *  2. Unfiltered — catches devices whose name is only in the scan response.
+     *
+     * Both callbacks feed into [addScannedDevice].
      */
     fun startScan() {
         val adapter = bluetoothAdapter
@@ -143,8 +159,28 @@ class EspConnectionViewModel(application: Application) : AndroidViewModel(applic
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        adapter.bluetoothLeScanner?.startScan(null, settings, leScanCallback)
-            ?: run { setError("BLE scanner unavailable."); return }
+        val scanner = adapter.bluetoothLeScanner
+        if (scanner == null) { setError("BLE scanner unavailable."); return }
+
+        // Scan 1: filtered by NUS service UUID (catches devices advertising the UUID
+        // without a name — very common on ESP32 with certain BLE libraries)
+        val nusFilter = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(NUS_SERVICE_UUID))
+            .build()
+        try {
+            scanner.startScan(listOf(nusFilter), settings, filteredScanCallback)
+            Log.i("EspBLE", "Started filtered (NUS UUID) scan")
+        } catch (e: Exception) {
+            Log.w("EspBLE", "Filtered scan start failed: ${e.message}")
+        }
+
+        // Scan 2: unfiltered — catches everything (name in scan response, etc.)
+        try {
+            scanner.startScan(null, settings, unfilteredScanCallback)
+            Log.i("EspBLE", "Started unfiltered scan")
+        } catch (e: Exception) {
+            Log.w("EspBLE", "Unfiltered scan start failed: ${e.message}")
+        }
 
         // auto-stop after timeout
         scanTimeoutJob = viewModelScope.launch {
@@ -152,7 +188,7 @@ class EspConnectionViewModel(application: Application) : AndroidViewModel(applic
             if (_uiState.value.status == EspConnectionStatus.SCANNING) {
                 stopScan()
                 if (_uiState.value.scannedDevices.isEmpty()) {
-                    setError("No BLE devices found nearby.")
+                    setError("No BLE devices found nearby. Make sure the ESP32-HUD is powered on.")
                 }
             }
         }
@@ -160,25 +196,97 @@ class EspConnectionViewModel(application: Application) : AndroidViewModel(applic
 
     private fun stopScan() {
         scanTimeoutJob?.cancel()
-        try { bluetoothAdapter?.bluetoothLeScanner?.stopScan(leScanCallback) } catch (_: Exception) {}
+        val scanner = bluetoothAdapter?.bluetoothLeScanner
+        try { scanner?.stopScan(filteredScanCallback) } catch (_: Exception) {}
+        try { scanner?.stopScan(unfilteredScanCallback) } catch (_: Exception) {}
         if (_uiState.value.status == EspConnectionStatus.SCANNING) {
             _uiState.update { it.copy(status = EspConnectionStatus.DISCONNECTED) }
         }
     }
 
-    private val leScanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val name    = result.device.name?.takeIf { it.isNotBlank() } ?: return
-            val address = result.device.address
-            val item    = BleDeviceItem(name = name, address = address)
+    /**
+     * Extract the best available display name from a scan result.
+     *
+     * Priority:
+     *  1. device.name  (populated if the device included a Complete/Shortened Local Name
+     *     in either the advertising packet or the scan response)
+     *  2. ScanRecord.deviceName  (same source, but sometimes populated when device.name isn't)
+     *  3. The MAC address as a readable fallback so the user can still pick the device.
+     */
+    private fun bestName(result: ScanResult): String {
+        result.device.name?.takeIf { it.isNotBlank() }?.let { return it }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            result.scanRecord?.deviceName?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return result.device.address   // MAC as last-resort label
+    }
 
-            _uiState.update { state ->
-                if (state.scannedDevices.any { it.address == address }) state
-                else state.copy(scannedDevices = state.scannedDevices + item)
+    /**
+     * Add (or update) a scanned device in the state list.
+     * Prefers the entry with the most informative name — so if the filtered
+     * scan found the device by UUID (with only a MAC label) and later the
+     * unfiltered scan returns the same address with a proper name, we upgrade.
+     */
+    private fun addScannedDevice(result: ScanResult) {
+        val address = result.device.address
+        val name    = bestName(result)
+        val item    = BleDeviceItem(name = name, address = address)
+
+        _uiState.update { state ->
+            val existing = state.scannedDevices.find { it.address == address }
+            when {
+                existing == null ->
+                    // New device — add it
+                    state.copy(scannedDevices = state.scannedDevices + item)
+                existing.name == address && name != address ->
+                    // We previously only had a MAC; now we have a real name — upgrade
+                    state.copy(scannedDevices = state.scannedDevices.map {
+                        if (it.address == address) item else it
+                    })
+                else -> state  // No improvement — keep existing entry
             }
         }
+    }
 
+    /** Callback for the filtered (NUS UUID) scan. */
+    private val filteredScanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            Log.d("EspBLE", "Filtered hit: addr=${result.device.address} name=${result.device.name}")
+            addScannedDevice(result)
+        }
+        override fun onBatchScanResults(results: MutableList<ScanResult>) {
+            results.forEach { addScannedDevice(it) }
+        }
         override fun onScanFailed(errorCode: Int) {
+            Log.w("EspBLE", "Filtered scan failed (code=$errorCode)")
+            // Don't setError here — unfiltered scan may still be running
+        }
+    }
+
+    /** Callback for the unfiltered scan. */
+    private val unfilteredScanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            // Only add devices that look like they could be our target:
+            // either they have a real name, or the filtered scan already
+            // found them by NUS UUID (address already in the list).
+            val address = result.device.address
+            val name    = bestName(result)
+            val alreadyFoundByUuid = _uiState.value.scannedDevices.any { it.address == address }
+
+            if (name != address || alreadyFoundByUuid) {
+                addScannedDevice(result)
+            }
+        }
+        override fun onBatchScanResults(results: MutableList<ScanResult>) {
+            results.forEach { r ->
+                val address = r.device.address
+                val name    = bestName(r)
+                val alreadyFound = _uiState.value.scannedDevices.any { it.address == address }
+                if (name != address || alreadyFound) addScannedDevice(r)
+            }
+        }
+        override fun onScanFailed(errorCode: Int) {
+            Log.w("EspBLE", "Unfiltered scan failed (code=$errorCode)")
             setError("BLE scan failed (code $errorCode).")
         }
     }
@@ -197,11 +305,17 @@ class EspConnectionViewModel(application: Application) : AndroidViewModel(applic
             setError("Invalid BLE address."); return
         }
 
+        val displayName = _uiState.value.scannedDevices
+            .find { it.address == address }?.name
+            ?.takeIf { it != address }  // prefer real name over MAC
+            ?: device.name
+            ?: address
+
         _uiState.update { it.copy(
             status           = EspConnectionStatus.CONNECTING,
             showDevicePicker = false,
             errorMessage     = null,
-            deviceName       = device.name ?: address
+            deviceName       = displayName
         )}
 
         gatt = device.connectGatt(
