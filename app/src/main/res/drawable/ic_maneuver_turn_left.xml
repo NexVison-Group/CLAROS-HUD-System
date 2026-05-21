@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Maneuver icon: TURN_LEFT (horizontal mirror of TURN_RIGHT)
+    Maneuver icon: TURN_LEFT
+    Shaft comes up from the bottom and curves left with an arrowhead.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="64dp"

@@ -73,6 +73,7 @@ fun CLAROSHUDSystemTheme(
     ThemePreferences.initialize(context)
 
     val themeMode by ThemePreferences.mode.collectAsState()
+
     val systemDark = isSystemInDarkTheme()
     val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> systemDark
@@ -98,7 +99,7 @@ fun CLAROSHUDSystemTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = appTypography(),
         content = content
     )
 }

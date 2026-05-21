@@ -4,12 +4,16 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -17,21 +21,23 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daklok.claroshudsystem.prefs.PuckModel
 import com.daklok.claroshudsystem.prefs.ThemeMode
 import com.daklok.claroshudsystem.prefs.ThemePreferences
-import androidx.compose.material.icons.rounded.Navigation
+import com.daklok.claroshudsystem.ui.theme.monoFontFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    ThemePreferences.initialize(context)
+
     val currentMode by ThemePreferences.mode.collectAsState()
     val currentPuck by ThemePreferences.puckModel.collectAsState()
 
@@ -41,7 +47,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 title = {
                     Text(
                         "SETTINGS",
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = monoFontFamily(),
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 2.sp,
                         fontSize = 14.sp
@@ -65,131 +71,146 @@ fun SettingsScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            ThemePreferences.initialize(context) // Ensure initialized
 
+            // ── Appearance ───────────────────────────────────────────────────
             SectionHeader("APPEARANCE", icon = Icons.Rounded.Brightness6)
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+            SettingsCard {
+                ThemeOptionRow(
+                    label = "Follow system",
+                    sub = "Match the device's dark/light setting",
+                    icon = Icons.Rounded.PhoneAndroid,
+                    selected = currentMode == ThemeMode.SYSTEM,
+                    onClick = { ThemePreferences.setMode(context, ThemeMode.SYSTEM) }
                 )
-            ) {
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    ThemeOptionRow(
-                        label = "Follow system",
-                        sub = "Match the device's dark/light setting",
-                        icon = Icons.Rounded.PhoneAndroid,
-                        selected = currentMode == ThemeMode.SYSTEM,
-                        onClick = { ThemePreferences.setMode(context, ThemeMode.SYSTEM) }
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 14.dp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-                    )
-                    ThemeOptionRow(
-                        label = "Light",
-                        sub = "Always use the light theme",
-                        icon = Icons.Rounded.LightMode,
-                        selected = currentMode == ThemeMode.LIGHT,
-                        onClick = { ThemePreferences.setMode(context, ThemeMode.LIGHT) }
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 14.dp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-                    )
-                    ThemeOptionRow(
-                        label = "Dark",
-                        sub = "Always use the dark theme",
-                        icon = Icons.Rounded.DarkMode,
-                        selected = currentMode == ThemeMode.DARK,
-                        onClick = { ThemePreferences.setMode(context, ThemeMode.DARK) }
-                    )
-                }
+                SettingsDivider()
+                ThemeOptionRow(
+                    label = "Light",
+                    sub = "Always use the light theme",
+                    icon = Icons.Rounded.LightMode,
+                    selected = currentMode == ThemeMode.LIGHT,
+                    onClick = { ThemePreferences.setMode(context, ThemeMode.LIGHT) }
+                )
+                SettingsDivider()
+                ThemeOptionRow(
+                    label = "Dark",
+                    sub = "Always use the dark theme",
+                    icon = Icons.Rounded.DarkMode,
+                    selected = currentMode == ThemeMode.DARK,
+                    onClick = { ThemePreferences.setMode(context, ThemeMode.DARK) }
+                )
             }
 
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Theme changes apply immediately across the app.",
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            )
+            SectionCaption("Theme changes apply immediately across the app.")
 
-            Spacer(Modifier.height(8.dp))
-
+            // ── Navigation ──────────────────────────────────────────────────
             SectionHeader("NAVIGATION", icon = Icons.Rounded.Navigation)
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+            SettingsCard {
+                OptionRow(
+                    label = "3D Arrow",
+                    sub = "High-definition navigation pointer",
+                    icon = Icons.Rounded.Navigation,
+                    selected = currentPuck == PuckModel.ARROW,
+                    onClick = { ThemePreferences.setPuckModel(context, PuckModel.ARROW) }
                 )
-            ) {
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    OptionRow(
-                        label = "3D Arrow",
-                        sub = "High-definition navigation pointer",
-                        icon = Icons.Rounded.Navigation,
-                        selected = currentPuck == PuckModel.ARROW,
-                        onClick = { ThemePreferences.setPuckModel(context, PuckModel.ARROW) }
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 14.dp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-                    )
-                    OptionRow(
-                        label = "Sports Car",
-                        sub = "HD blue sports car model",
-                        icon = Icons.Rounded.PhoneAndroid,
-                        selected = currentPuck == PuckModel.SPORTS_CAR,
-                        onClick = { ThemePreferences.setPuckModel(context, PuckModel.SPORTS_CAR) }
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 14.dp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-                    )
-                    OptionRow(
-                        label = "Regular Car",
-                        sub = "HD gray car model",
-                        icon = Icons.Rounded.PhoneAndroid,
-                        selected = currentPuck == PuckModel.REGULAR_CAR,
-                        onClick = { ThemePreferences.setPuckModel(context, PuckModel.REGULAR_CAR) }
-                    )
-                }
+                SettingsDivider()
+                OptionRow(
+                    label = "Sports Car",
+                    sub = "HD blue sports car model",
+                    icon = Icons.Rounded.DirectionsCar,
+                    selected = currentPuck == PuckModel.SPORTS_CAR,
+                    onClick = { ThemePreferences.setPuckModel(context, PuckModel.SPORTS_CAR) }
+                )
+                SettingsDivider()
+                OptionRow(
+                    label = "Regular Car",
+                    sub = "HD gray car model",
+                    icon = Icons.Rounded.DirectionsCar,
+                    selected = currentPuck == PuckModel.REGULAR_CAR,
+                    onClick = { ThemePreferences.setPuckModel(context, PuckModel.REGULAR_CAR) }
+                )
             }
+
+            Spacer(Modifier.height(20.dp))
         }
     }
+}
+
+// ── Reusable building blocks ────────────────────────────────────────────────
+
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(vertical = 4.dp), content = content)
+    }
+}
+
+@Composable
+private fun SettingsDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 14.dp),
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+    )
 }
 
 @Composable
 private fun SectionHeader(text: String, icon: ImageVector) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(16.dp)
-        )
-        Spacer(Modifier.width(8.dp))
+        // Glowing accent square behind the icon — gives the section title a HUD feel.
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .background(
+                    brush = Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        )
+                    ),
+                    shape = RoundedCornerShape(6.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+        Spacer(Modifier.width(10.dp))
         Text(
             text,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = monoFontFamily(),
             fontSize = 11.sp,
-            letterSpacing = 2.sp,
+            letterSpacing = 2.5.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
         )
     }
+}
+
+@Composable
+private fun SectionCaption(text: String) {
+    Text(
+        text = text,
+        fontFamily = monoFontFamily(),
+        fontSize = 11.sp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+    )
 }
 
 @Composable
@@ -239,7 +260,7 @@ private fun OptionRow(
             )
             Text(
                 sub,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = monoFontFamily(),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
             )

@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
+import com.daklok.claroshudsystem.ui.theme.monoFontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -291,7 +292,7 @@ fun NavigationScreen(
                     Column(Modifier.weight(1f)) {
                         Text(
                             "LOCATION",
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = monoFontFamily(),
                             fontSize = 10.sp,
                             letterSpacing = 2.sp,
                             fontWeight = FontWeight.Bold,
@@ -361,7 +362,7 @@ private fun BleDevicePicker(
             ) {
                 Text(
                     "SELECT BLE DEVICE",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     letterSpacing = 2.sp,
@@ -386,7 +387,7 @@ private fun BleDevicePicker(
                 Text(
                     if (isScanning) "Scanning for nearby BLE devices…"
                     else "No devices found. Make sure your ESP32-HUD is powered on and advertising.",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
@@ -422,14 +423,14 @@ private fun BleDevicePicker(
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         device.name,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = monoFontFamily(),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         device.address,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = monoFontFamily(),
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                     )
@@ -506,7 +507,7 @@ private fun EspConnectionBar(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = deviceName.uppercase(),
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
                     letterSpacing = 1.5.sp,
@@ -514,7 +515,7 @@ private fun EspConnectionBar(
                 )
                 Text(
                     text = label,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontSize = 10.sp,
                     letterSpacing = 2.sp,
                     color = dotColor
@@ -530,7 +531,7 @@ private fun EspConnectionBar(
             ) {
                 Text(
                     text = if (isLinkedOrBusy) "DISCONNECT" else "CONNECT",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontSize = 10.sp,
                     letterSpacing = 1.5.sp,
                     color = MaterialTheme.colorScheme.primary
@@ -594,7 +595,7 @@ private fun EndpointRow(label: String, value: String, dotColor: Color) {
         Spacer(Modifier.width(10.dp))
         Text(
             text = label,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = monoFontFamily(),
             fontSize = 10.sp,
             letterSpacing = 2.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
@@ -603,7 +604,7 @@ private fun EndpointRow(label: String, value: String, dotColor: Color) {
         Spacer(Modifier.width(8.dp))
         Text(
             text = value,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = monoFontFamily(),
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface,
@@ -644,7 +645,7 @@ private fun NavigationStatPanel(
                     if (nextDistance.isNotBlank()) {
                         Text(
                             text = "IN $nextDistance",
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = monoFontFamily(),
                             fontSize = 11.sp,
                             letterSpacing = 2.sp,
                             color = MaterialTheme.colorScheme.primary,
@@ -689,7 +690,7 @@ private fun StatCell(label: String, value: String, valueColor: Color? = null) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = monoFontFamily(),
             fontSize = 9.sp,
             letterSpacing = 2.sp,
             fontWeight = FontWeight.Bold,
@@ -698,7 +699,7 @@ private fun StatCell(label: String, value: String, valueColor: Color? = null) {
         Spacer(Modifier.height(2.dp))
         Text(
             text = value,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = monoFontFamily(),
             fontSize = 20.sp,
             fontWeight = FontWeight.ExtraBold,
             color = valueColor ?: MaterialTheme.colorScheme.onSurface
@@ -749,7 +750,7 @@ fun ManeuverIcon(
             ) {
                 Text(
                     text = roundaboutExit.toString(),
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onPrimary,
@@ -786,7 +787,7 @@ private fun DeveloperPanel(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = "BLUETOOTH PAYLOAD · LIVE",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontSize = 10.sp,
                     letterSpacing = 2.sp,
                     fontWeight = FontWeight.Bold,
@@ -799,7 +800,7 @@ private fun DeveloperPanel(
                 ) {
                     Text(
                         "CLEAR",
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = monoFontFamily(),
                         fontSize = 10.sp,
                         letterSpacing = 1.5.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
@@ -816,7 +817,7 @@ private fun DeveloperPanel(
             ) {
                 Text(
                     text = "▸ $currentPayload",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
@@ -834,7 +835,7 @@ private fun DeveloperPanel(
                 // Show the actual payload schema we now emit.
                 Text(
                     text = "<DIR>, <DIST>, <ETA>, <SPD>   e.g.  RIGHT, 11m, 20:00, 15",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
                     modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp)
@@ -849,7 +850,7 @@ private fun DeveloperPanel(
                     items(log) { line ->
                         Text(
                             text = line,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = monoFontFamily(),
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                             modifier = Modifier.padding(vertical = 1.dp)
@@ -1030,7 +1031,7 @@ private fun MapPanel(
                 Spacer(Modifier.width(6.dp))
                 Text(
                     "EXIT",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontSize = 11.sp,
                     letterSpacing = 2.sp,
                     fontWeight = FontWeight.Bold
@@ -1071,7 +1072,7 @@ private fun OrientationToggle(
             Spacer(Modifier.width(6.dp))
             Text(
                 text = if (isNorth) "N" else "↑",
-                fontFamily = FontFamily.Monospace,
+                fontFamily = monoFontFamily(),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface

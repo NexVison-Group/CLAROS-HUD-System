@@ -23,9 +23,9 @@ private fun Context.prefs(): SharedPreferences =
     getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
 /**
- * Reads and writes the user-selected ThemeMode using SharedPreferences.
- * Exposed as a StateFlow so Compose recomposes immediately when the user
- * changes it from the Settings screen.
+ * Reads and writes user-selected preferences (theme mode, puck model)
+ * using SharedPreferences. All values are exposed as StateFlow so Compose
+ * recomposes immediately when the user changes them from the Settings screen.
  */
 object ThemePreferences {
 
@@ -37,13 +37,13 @@ object ThemePreferences {
 
     private var initialized = false
 
-    /** Read the persisted mode once on app startup. Safe to call multiple times. */
+    /** Read persisted preferences once on app startup. Safe to call multiple times. */
     fun initialize(context: Context) {
         if (initialized) return
         initialized = true
-        
+
         val p = context.prefs()
-        
+
         val rawTheme = p.getString(KEY_THEME_MODE, ThemeMode.SYSTEM.name)
         _mode.value = runCatching { ThemeMode.valueOf(rawTheme ?: ThemeMode.SYSTEM.name) }
             .getOrDefault(ThemeMode.SYSTEM)

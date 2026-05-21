@@ -101,6 +101,7 @@ dependencies {
     implementation(libs.mapbox.search)
     implementation(libs.mapbox.search.ui)
     implementation(libs.mapbox.services)
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.7.8")
     implementation(libs.coil.compose)
     implementation(libs.converter.moshi)
     implementation(libs.kotlinx.coroutines.android)

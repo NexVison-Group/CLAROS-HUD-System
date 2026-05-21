@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import com.daklok.claroshudsystem.ui.theme.monoFontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -411,7 +412,7 @@ fun HomeScreen(
             ) {
                 Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("NAVIGATE TO", fontFamily = FontFamily.Monospace,
+                        Text("NAVIGATE TO", fontFamily = monoFontFamily(),
                             fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary)
                         Text(name, style = MaterialTheme.typography.bodyLarge,
@@ -429,7 +430,7 @@ fun HomeScreen(
                     ) {
                         Icon(Icons.Rounded.Directions, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("GO", fontFamily = FontFamily.Monospace, letterSpacing = 1.5.sp)
+                        Text("GO", fontFamily = monoFontFamily(), letterSpacing = 1.5.sp)
                     }
                     Spacer(Modifier.width(4.dp))
                     IconButton(onClick = { tappedDestination = null }) {
@@ -552,13 +553,13 @@ private fun FromRow(customStartName: String?, onClick: () -> Unit) {
             Box(Modifier.size(8.dp)
                 .background(MaterialTheme.colorScheme.tertiary, RoundedCornerShape(50)))
             Spacer(Modifier.width(10.dp))
-            Text("FROM", fontFamily = FontFamily.Monospace, fontSize = 10.sp,
+            Text("FROM", fontFamily = monoFontFamily(), fontSize = 10.sp,
                 letterSpacing = 2.sp, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 modifier = Modifier.widthIn(min = 44.dp))
             Spacer(Modifier.width(8.dp))
             Text(customStartName ?: "My Location (GPS)",
-                fontFamily = FontFamily.Monospace, fontSize = 13.sp,
+                fontFamily = monoFontFamily(), fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (customStartName != null) 1f else 0.7f),
                 maxLines = 1)
         }
@@ -676,7 +677,7 @@ private fun SugRow(
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
             Icon(Icons.Rounded.Directions, null, Modifier.size(15.dp))
             Spacer(Modifier.width(4.dp))
-            Text(navigateLabel, fontFamily = FontFamily.Monospace, letterSpacing = 1.5.sp,
+            Text(navigateLabel, fontFamily = monoFontFamily(), letterSpacing = 1.5.sp,
                 style = MaterialTheme.typography.labelMedium)
         }
     }
@@ -722,7 +723,7 @@ private fun EspPill(status: EspConnectionStatus, expanded: Boolean, onClick: () 
             }
             Icon(btIcon, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                 modifier = Modifier.size(18.dp))
-            Text(label, fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+            Text(label, fontFamily = monoFontFamily(), fontSize = 11.sp,
                 letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface)
         }
@@ -759,7 +760,7 @@ private fun BleDevicePicker(
             ) {
                 Text(
                     "SELECT BLE DEVICE",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     letterSpacing = 2.sp,
@@ -784,7 +785,7 @@ private fun BleDevicePicker(
                 Text(
                     if (isScanning) "Scanning for nearby BLE devices…"
                     else "No devices found. Make sure your ESP32-HUD is powered on and advertising.",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = monoFontFamily(),
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
@@ -820,14 +821,14 @@ private fun BleDevicePicker(
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         device.name,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = monoFontFamily(),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         device.address,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = monoFontFamily(),
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                     )
@@ -882,11 +883,11 @@ private fun EspPanel(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(espState.deviceName.uppercase(),
-                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                        fontFamily = monoFontFamily(), fontWeight = FontWeight.Bold,
                         fontSize = 12.sp, letterSpacing = 1.5.sp,
                         color = MaterialTheme.colorScheme.onSurface)
                     Text(espState.status.name,
-                        fontFamily = FontFamily.Monospace, fontSize = 10.sp, letterSpacing = 2.sp,
+                        fontFamily = monoFontFamily(), fontSize = 10.sp, letterSpacing = 2.sp,
                         color = dotColor)
                 }
                 Button(
@@ -910,7 +911,7 @@ private fun EspPanel(
                     )
                 ) {
                     Text(if (isLinked) "DISCONNECT" else "CONNECT",
-                        fontFamily = FontFamily.Monospace, fontSize = 11.sp, letterSpacing = 1.5.sp)
+                        fontFamily = monoFontFamily(), fontSize = 11.sp, letterSpacing = 1.5.sp)
                 }
             }
 
@@ -918,7 +919,7 @@ private fun EspPanel(
                 Surface(shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)) {
                     Text(msg, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+                        fontFamily = monoFontFamily(), fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.error)
                 }
             }
@@ -928,7 +929,7 @@ private fun EspPanel(
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)) {
                     Text("▸ ${espState.lastPayloadSent}",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                        fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+                        fontFamily = monoFontFamily(), fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.primary)
                 }
             }
@@ -937,7 +938,7 @@ private fun EspPanel(
                 Text(
                     "Power on your ESP32-HUD, then tap CONNECT. " +
                             "The app will scan for nearby BLE devices and let you pick one.",
-                    fontFamily = FontFamily.Monospace, fontSize = 10.sp,
+                    fontFamily = monoFontFamily(), fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
             }
